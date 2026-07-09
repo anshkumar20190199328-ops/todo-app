@@ -1,0 +1,11 @@
+{
+  "name": "Online To-Do App",
+  "short_name": "To-Do",
+  "start_url": "/todo-app/",
+  "scope": "/todo-app/",
+  "display": "standalone",
+  "background_color": "#eef2f7",
+  "theme_color": "#0f766e",
+  "description": "Online To-Do app with Google login and sync",
+  "icons": []
+}

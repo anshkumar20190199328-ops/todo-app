@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Online To-Do App</title>
+  <style>
+    body{font-family:Arial;margin:0;padding:25px;background:#eef2f7;min-height:100vh;background-size:cover;background-position:center}
+    .app,.login{max-width:720px;margin:auto;background:white;padding:20px;border-radius:8px;box-shadow:0 8px 28px #0003}
+    .login{max-width:380px;margin-top:90px;text-align:center}
+    body.dark{background-color:#111827;color:white}
+    body.dark .app,body.dark .login{background:#1f2937;color:white}
+    h1{text-align:center;margin-top:0}
+    .row{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}
+    input,select{padding:10px;font-size:15px;flex:1}
+    button{padding:10px;border:0;border-radius:4px;background:#0f766e;color:white;cursor:pointer}
+    .red{background:#b42318}.blue{background:#2563eb}.gray{background:#4b5563}.yellow{background:#ca8a04}
+    ul{list-style:none;padding:0}
+    li{background:#eef2f7;margin:9px 0;padding:10px;border-radius:5px;display:flex;gap:8px;align-items:center}
+    body.dark li{background:#374151}
+    .text{flex:1;cursor:pointer;overflow-wrap:anywhere}
+    .done{text-decoration:line-through;color:gray}
+    .small{font-size:12px;color:gray}
+    .count{text-align:center;font-weight:bold}
+    .high{border-left:6px solid #dc2626}
+    .medium{border-left:6px solid #ca8a04}
+    .low{border-left:6px solid #16a34a}
+    .user{text-align:center;font-size:14px;color:gray;margin-bottom:10px}
+  </style>
+</head>
+<body>
+
+<div id="loginBox" class="login">
+  <h2>Online To-Do</h2>
+  <p>Google account se login karo. Aapke tasks online save honge.</p>
+  <button id="loginBtn">Login with Google</button>
+</div>
+
+<div id="appBox" class="app" style="display:none">
+  <h1>Online To-Do</h1>
+  <p id="userInfo" class="user"></p>
+
+  <div class="row">
+    <button id="themeBtn" class="blue">Dark / Light</button>
+    <button id="logoutBtn" class="red">Logout</button>
+  </div>
+
+  <div class="row">
+    <input id="bgUrl" placeholder="Background photo URL">
+    <button id="setBgBtn">Set Photo</button>
+    <input id="bgFile" type="file" accept="image/*">
+    <button id="uploadBgBtn">Upload</button>
+    <button id="removeBgBtn" class="red">Remove BG</button>
+  </div>
+
+  <div class="row">
+    <input id="taskInput" placeholder="Kaam likho">
+    <select id="priority">
+      <option value="low">Low</option>
+      <option value="medium">Medium</option>
+      <option value="high">High</option>
+    </select>
+    <input id="dueDate" type="date">
+    <input id="category" placeholder="Category">
+    <button id="addBtn">Add</button>
+  </div>
+
+  <div class="row">
+    <input id="search" placeholder="Search task">
+    <select id="filter">
+      <option value="all">All</option>
+      <option value="pending">Pending</option>
+      <option value="done">Completed</option>
+    </select>
+    <button id="exportBtn" class="yellow">Export</button>
+    <input id="importFile" type="file" accept=".json">
+    <button id="clearBtn" class="red">Clear All</button>
+  </div>
+
+  <p id="count" class="count"></p>
+  <ul id="taskList"></ul>
+  <p id="empty" class="small" style="text-align:center">Abhi koi kaam nahi hai.</p>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+  import { getDatabase, ref, push, set, update, remove, onValue } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyA8Lk6_3OZHrhookRAoH1y523KY2X4s9us",
+    authDomain: "todo-web-14857.firebaseapp.com",
+    databaseURL: "https://todo-web-14857-default-rtdb.firebaseio.com",
+    projectId: "todo-web-14857",
+    storageBucket: "todo-web-14857.firebasestorage.app",
+    messagingSenderId: "881923789578",
+    appId: "1:881923789578:web:15112c09d07a813483e0f3",
+    measurementId: "G-9KVTE718CB"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getDatabase(app);
+  const provider = new GoogleAuthProvider();
+
+  let currentUser = null;
+  let tasks = {};
+  let stopListening = null;
+  let theme = localStorage.getItem("theme") || "light";
+  let bg = localStorage.getItem("bg") || "";
+
+  function tasksRef() {
+    return ref(db, "users/" + currentUser.uid + "/tasks");
+  }
+
+  function taskRef(id) {
+    return ref(db, "users/" + currentUser.uid + "/tasks/" + id);
+  }
+
+  function applyTheme() {
+    document.body.classList.toggle("dark", theme === "dark");
+    localStorage.setItem("theme", theme);
+  }
+
+  function applyBg() {
+    document.body.style.backgroundImage = bg ? "url('" + bg + "')" : "";
+    localStorage.setItem("bg", bg);
+  }
+
+  function showTasks() {
+    const list = document.getElementById("taskList");
+    list.innerHTML = "";
+
+    const taskArray = Object.entries(tasks).map(function(entry) {
+      return { id: entry[0], ...entry[1] };
+    });
+
+    const q = document.getElementById("search").value.toLowerCase();
+    const f = document.getElementById("filter").value;
+    const doneCount = taskArray.filter(function(t) { return t.done; }).length;
+
+    document.getElementById("count").innerText =
+      "Total: " + taskArray.length +
+      " | Completed: " + doneCount +
+      " | Pending: " + (taskArray.length - doneCount);
+
+    let shown = 0;
+
+    taskArray.forEach(function(t) {
+      if (q && !t.text.toLowerCase().includes(q) && !(t.cat || "").toLowerCase().includes(q)) return;
+      if (f === "done" && !t.done) return;
+      if (f === "pending" && t.done) return;
+
+      shown++;
+
+      const li = document.createElement("li");
+      li.className = t.priority || "low";
+
+      const info = document.createElement("div");
+      info.className = "text" + (t.done ? " done" : "");
+      info.innerHTML = t.text + "<br><span class='small'>" +
+        (t.priority || "low") + " | " +
+        (t.cat || "No category") + " | Due: " +
+        (t.due || "No date") + " | " +
+        (t.time || "") + "</span>";
+
+      info.onclick = function() {
+        update(taskRef(t.id), { done: !t.done });
+      };
+
+      const edit = document.createElement("button");
+      edit.className = "blue";
+      edit.innerText = "Edit";
+      edit.onclick = function() {
+        const newText = prompt("Task edit karo:", t.text);
+        if (newText && newText.trim()) {
+          update(taskRef(t.id), { text: newText.trim() });
+        }
+      };
+
+      const del = document.createElement("button");
+      del.className = "red";
+      del.innerText = "Delete";
+      del.onclick = function() {
+        remove(taskRef(t.id));
+      };
+
+      li.append(info, edit, del);
+      list.appendChild(li);
+    });
+
+    document.getElementById("empty").style.display = shown ? "none" : "block";
+  }
+
+  function addTask() {
+    const input = document.getElementById("taskInput");
+    const text = input.value.trim();
+
+    if (!text) {
+      alert("Pehle kaam likho");
+      return;
+    }
+
+    set(push(tasksRef()), {
+      text: text,
+      done: false,
+      priority: document.getElementById("priority").value,
+      due: document.getElementById("dueDate").value,
+      cat: document.getElementById("category").value.trim(),
+      time: new Date().toLocaleString()
+    });
+
+    input.value = "";
+    document.getElementById("dueDate").value = "";
+    document.getElementById("category").value = "";
+    input.focus();
+  }
+
+  document.getElementById("loginBtn").onclick = function() {
+    signInWithPopup(auth, provider).catch(function(error) {
+      alert(error.message);
+    });
+  };
+
+  document.getElementById("logoutBtn").onclick = function() {
+    signOut(auth);
+  };
+
+  document.getElementById("themeBtn").onclick = function() {
+    theme = theme === "dark" ? "light" : "dark";
+    applyTheme();
+  };
+
+  document.getElementById("setBgBtn").onclick = function() {
+    bg = document.getElementById("bgUrl").value.trim();
+    if (!bg) return alert("Photo URL paste karo");
+    applyBg();
+    document.getElementById("bgUrl").value = "";
+  };
+
+  document.getElementById("uploadBgBtn").onclick = function() {
+    const file = document.getElementById("bgFile").files[0];
+    if (!file) return alert("Photo select karo");
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      bg = e.target.result;
+      applyBg();
+      document.getElementById("bgFile").value = "";
+    };
+    reader.readAsDataURL(file);
+  };
+
+  document.getElementById("removeBgBtn").onclick = function() {
+    bg = "";
+    applyBg();
+  };
+
+  document.getElementById("addBtn").onclick = addTask;
+
+  document.getElementById("taskInput").addEventListener("keydown", function(e) {
+    if (e.key === "Enter") addTask();
+  });
+
+  document.getElementById("search").oninput = showTasks;
+  document.getElementById("filter").onchange = showTasks;
+
+  document.getElementById("clearBtn").onclick = function() {
+    if (confirm("Sab tasks delete karne hain?")) {
+      remove(tasksRef());
+    }
+  };
+
+  document.getElementById("exportBtn").onclick = function() {
+    const data = JSON.stringify(Object.values(tasks), null, 2);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+    a.download = "todo-backup.json";
+    a.click();
+  };
+
+  document.getElementById("importFile").onchange = function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const imported = JSON.parse(e.target.result);
+        imported.forEach(function(task) {
+          set(push(tasksRef()), task);
+        });
+        document.getElementById("importFile").value = "";
+      } catch {
+        alert("Backup file sahi nahi hai");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  onAuthStateChanged(auth, function(user) {
+    if (stopListening) {
+      stopListening();
+      stopListening = null;
+    }
+
+    if (user) {
+      currentUser = user;
+      document.getElementById("loginBox").style.display = "none";
+      document.getElementById("appBox").style.display = "block";
+      document.getElementById("userInfo").innerText = "Login: " + user.email;
+
+      stopListening = onValue(tasksRef(), function(snapshot) {
+        tasks = snapshot.val() || {};
+        showTasks();
+      });
+    } else {
+      currentUser = null;
+      tasks = {};
+      document.getElementById("loginBox").style.display = "block";
+      document.getElementById("appBox").style.display = "none";
+    }
+  });
+
+  applyTheme();
+  applyBg();
+</script>
+
+</body>
+</html>

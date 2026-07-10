@@ -1,14 +1,18 @@
 const CACHE_NAME = "todo-app-v1";
 
-const FILES_TO_CACHE = [
+const urlsToCache = [
   "/todo-app/",
   "/todo-app/index.html",
-  "/todo-app/manifest.json"
+  "/todo-app/manifest.json",
+  "/todo-app/icon-192.png.png",
+  "/todo-app/icon-512.png.png"
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(FILES_TO_CACHE))
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(urlsToCache);
+    })
   );
 });
 

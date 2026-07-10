@@ -1,7 +1,5 @@
 <html>
 <head>
-  <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#0f766e">
   <title>Online To-Do App</title>
   <style>
     body{font-family:Arial;margin:0;padding:25px;background:#eef2f7;min-height:100vh;background-size:cover;background-position:center}
@@ -320,7 +318,6 @@
       document.getElementById("appBox").style.display = "none";
     }
   });
-
   applyTheme();
   applyBg();
 </script>
